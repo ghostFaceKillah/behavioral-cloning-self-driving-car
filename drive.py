@@ -12,7 +12,7 @@ from PIL import ImageOps
 from flask import Flask, render_template
 from io import BytesIO
 
-from keras.models import model_from_json
+from keras.models import model_from_json, load_model
 from keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array
 
 # Fix error with Keras and TensorFlow
@@ -64,14 +64,15 @@ if __name__ == '__main__':
     parser.add_argument('model', type=str,
     help='Path to model definition json. Model weights should be on the same path.')
     args = parser.parse_args()
-    with open(args.model, 'r') as jfile:
+    # with open(args.model, 'r') as jfile:
         # NOTE: if you saved the file by calling json.dump(model.to_json(), ...)
         # then you will have to call:
         #
         #   model = model_from_json(json.loads(jfile.read()))\
         #
         # instead.
-        model = model_from_json(jfile.read())
+        # model = model_from_json(jfile.read())
+    model = load_model(args.model)
 
 
     model.compile("adam", "mse")
