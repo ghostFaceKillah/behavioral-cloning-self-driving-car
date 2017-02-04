@@ -3,108 +3,240 @@ Stuff to figure out.
 
 1) Figure out how to build a simple model in Keras. 
    Maybe start from one from comma.ai?
-
 2) Build a model that works on 9 images?
-
 3) Need a joystick to gather the data? Or maybe mouse is ok enough...
-
 3) What about logging keras to tensorboard?
-
 4) Probably we need to think about preloading the images.
    
-
 Let's start real easy and make a starting model on only 10 images.
-It worxxx! Time to build some real shit.
 
 """
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, Flatten, Lambda, ELU
-from keras.layers.convolutional import Convolution2D
-
+import cv2
+import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import pandas as pd
-import time
+import tqdm
+
+from keras.callbacks import ModelCheckpoint, TensorBoard
+from keras.layers import Dense, Dropout, Flatten, Lambda, ELU
+from keras.layers.convolutional import Convolution2D
+from keras.models import Sequential
+from keras.optimizers import Adam
+from keras.preprocessing.image import img_to_array
+
+from sklearn.model_selection import train_test_split
+from sklearn.utils import shuffle
+
+DATA_DIR = 'data'
 
 
-def get_small_data():
-    interesting_columns = ['center', 'steering']
-    meta_data = pd.read_csv('data/driving_log.csv')[interesting_columns]
-    
-    choice_idx = [0, 100, 300]
-    
-    # choose some data with positive steering angle
-    meta_plus = meta_data[meta_data.steering > 0.0]
-    
-    # choose some data with negative steering angle
-    meta_minus = meta_data[meta_data.steering < 0.0]
-    
-    # choose some data with null steering angle
-    meta_null = meta_data[meta_data.steering == 0.0]
-    
-    data = pd.concat([
-            meta_plus.iloc[choice_idx],
-            meta_minus.iloc[choice_idx],
-            meta_null.iloc[choice_idx],
-        ])
-    
-    imgs = np.array([
-      plt.imread('data/' + img_fname) for img_fname in data.center
-    ])
-    
-    x = imgs
-    y = data.steering.values
+# We will data where speed is too low - they lead to non-smooth steering angles
+SPEED_CUTOFF = 20.0
 
-    return x, y
+# Change angle by how much for left and right camera images
+DRIVING_ANGLE_CORR = 0.3
+TRANSLATION_CORRECTION = 0.09
+
+VALID_SPLIT = 0.1
+# SEED = 42
+LEARNING_RATE = 1e-4
+
+INPUT_IMAGE_SIZE = (160, 320, 3)
+IMG_CROP = (50, 140)
+IMG_CROP_PCT = (0.3125, 0.875)
+
+NET_IN_ROW, NET_IN_COL, NET_IN_CH = 64, 200, 3
+
+TRANSLATION_RANGE = 50
+
+# Placeholder for 
+IMGS = None
+
+EPOCHS = 15
+BATCH_SIZE = 256
 
 
-def get_big_data():
-    interesting_columns = ['center', 'steering']
-    data = pd.read_csv('data/driving_log.csv')[interesting_columns]
-    
-    imgs = np.array([
-      plt.imread('data/' + img_fname) for img_fname in data.center
-    ])
-    
-    x = imgs
-    y = data.steering.values
 
-    return x, y
+def preload_imgs():
+    print("Preloading images...")
+    global IMGS
+    resu = {}
+    dlog = pd.read_csv(os.path.join(DATA_DIR, 'driving_log.csv'))
+    all_img_names = list(dlog.center) + list(dlog.left) + list(dlog.right)
+
+    for img_fname in tqdm.tqdm(all_img_names):
+        img_fname = img_fname.strip()
+        resu[img_fname] = img_to_array(mpimg.imread(img_fname))
+
+    IMGS = resu
+
+
+def load_data():
+    dlog = pd.read_csv(os.path.join(DATA_DIR, 'driving_log.csv'))
+    dlog = shuffle(dlog[dlog.speed > SPEED_CUTOFF])
+    train, valid = train_test_split(dlog, test_size=VALID_SPLIT)
+    return train, valid
+
+
+
+def side_to_correction(side):
+    if side == 'left':
+        return DRIVING_ANGLE_CORR
+    elif side == 'right':
+        return -DRIVING_ANGLE_CORR
+    elif side == 'center':
+        return 0.0
+    else:
+        raise AssertionError("Incorrect")
+
+
+def load_data_point(driving_log_entry, side):
+    global IMGS
+    img_fname = driving_log_entry[side].strip()
+    steering_angle_correction = side_to_correction(side)
+    steering = driving_log_entry['steering'] + steering_angle_correction
+
+    # img to array to reorder the dims
+    if IMGS is None:
+        img = img_to_array(mpimg.imread(img_fname))
+    else:
+        img = IMGS[img_fname]
+        
+    return img, steering
+
+
+def resize(img, steering_angle):
+    cropped_img = img[IMG_CROP[0]:IMG_CROP[1], :, :]
+    resized = cv2.resize(cropped_img, dsize=(NET_IN_COL, NET_IN_ROW), interpolation=cv2.INTER_AREA)
+    return resized, steering_angle
+
+
+def random_translation(img, steering_angle):
+    translation_size = np.random.uniform(-TRANSLATION_RANGE, TRANSLATION_RANGE)
+    translation_matrix = np.array([[1.0, 0.0, translation_size], [0.0, 1.0, 0.0]])
+    translated_img = cv2.warpAffine(img, translation_matrix, (NET_IN_COL, NET_IN_ROW))
+    new_steering_angle = steering_angle + TRANSLATION_CORRECTION  * translation_size
+    return translated_img, new_steering_angle
+
+
+def flip(img, steering_angle):
+    if np.random.rand() > 0.5:
+        return img, steering_angle
+    else:
+        return cv2.flip(img, 1), -steering_angle
+
+
+def draw_camera_side():
+    i = np.random.randint(3)
+    if i == 0:
+        return 'left'
+    elif i == 1:
+        return 'center'
+    else:
+        return 'right'
+
+
+def batch_generator(data, batch_size, augs):
+    batch_x = np.zeros((batch_size, NET_IN_ROW, NET_IN_COL, NET_IN_CH), dtype=np.float32)
+    batch_y = np.zeros(batch_size, dtype=np.float32)
+
+    idx_sample = 0
+
+    while 1:
+        for idx_batch in range(batch_size):
+
+            if idx_sample == len(data):
+                data = shuffle(data)
+                idx_sample = 0
+
+            log_record = data.iloc[idx_sample]
+            side = draw_camera_side()
+
+            # TODO(mike): To make it faster, some prefetching of the images can be done...
+            x, y = load_data_point(log_record, side)
+
+            # apply all the augmentations
+            for f in augs:
+                x, y = f(x, y)
+
+            batch_x[idx_batch] = x
+            batch_y[idx_batch] = y
+
+            idx_sample += 1
+
+        yield batch_x, batch_y
+
 
 
 def get_model():
     ## Prepare model
-    ch, row, col = 3, 160, 320
-
     model = Sequential()
-    model.add(Lambda(lambda x: x/127.5 - 1.,
-                              input_shape=(row, col, ch),
-                              output_shape=(row, col, ch)))
-    model.add(Convolution2D(16, 8, 8, subsample=(4, 4), border_mode="same"))
+    model.add(Lambda(lambda x: x/127.5 - 1., input_shape=(NET_IN_ROW, NET_IN_COL, NET_IN_CH)))
+
+    model.add(Convolution2D(24, 5, 5, subsample=(2, 2), border_mode="valid", init='he_normal'))
     model.add(ELU())
-    model.add(Convolution2D(32, 5, 5, subsample=(2, 2), border_mode="same"))
+
+    model.add(Convolution2D(36, 5, 5, subsample=(2, 2), border_mode="valid", init='he_normal'))
     model.add(ELU())
-    model.add(Convolution2D(64, 5, 5, subsample=(2, 2), border_mode="same"))
+
+    model.add(Convolution2D(48, 5, 5, subsample=(2, 2), border_mode="valid", init='he_normal'))
+    model.add(ELU())
+
+    model.add(Convolution2D(64, 3, 3, subsample=(1, 1), border_mode="valid", init='he_normal'))
+    model.add(ELU())
+
+    model.add(Convolution2D(64, 3, 3, subsample=(1, 1), border_mode="valid", init='he_normal'))
+    model.add(ELU())
+
     model.add(Flatten())
-    model.add(Dropout(.2))
+
+    # model.add(Dropout(0.5))
+
+    # model.add(Dense(1164))
+    # model.add(ELU())
+
+    model.add(Dense(100))
     model.add(ELU())
-    model.add(Dense(512))
-    model.add(Dropout(.5))
+
+    model.add(Dense(50))
     model.add(ELU())
+
+    model.add(Dense(10))
+    model.add(ELU())
+
     model.add(Dense(1))
 
-    model.compile(optimizer="adam", loss="mse")
+    optimizer = Adam(lr=LEARNING_RATE)
+    model.compile(optimizer=optimizer, loss="mse", metrics=["mean_squared_error"])
 
-    return model
+    checkpoint = ModelCheckpoint("weights-{epoch:02d}.h5")
+    tb = TensorBoard()
+    callbacks = [checkpoint, tb]
 
-
-start_time = time.time()
-x, y = get_big_data()
-print("--- It took %s seconds to load the data ---" % (time.time() - start_time))
-
-model = get_model()
-
-history = model.fit(x, y, batch_size=128, nb_epoch=10)
-model.save('first.h5')
+    return model, callbacks
 
 
+
+if __name__ == '__main__':
+    preload_imgs()
+    train, valid = load_data()
+
+    train_gen = batch_generator(train, BATCH_SIZE, [random_translation, flip, resize])
+    valid_gen = batch_generator(valid, BATCH_SIZE, [resize])
+    model, callbacks = get_model()
+
+    hist = model.fit_generator(train_gen, 
+                               validation_data=valid_gen,
+                               samples_per_epoch=100 * BATCH_SIZE,
+                               nb_val_samples=1024,
+                               nb_epoch=EPOCHS,
+                               callbacks=callbacks)
+
+    model_json = model.to_json()
+    with open("model.json", "w") as json_file:
+        json_file.write(model_json)
+
+    model.save_weights('model.h5')
+   
