@@ -226,8 +226,6 @@ def get_model():
 
 
 if __name__ == '__main__':
-    # preload_imgs()
-
     train, valid = load_data()
 
     train_gen = batch_generator(train, BATCH_SIZE, [random_translation, flip, resize])
@@ -235,16 +233,21 @@ if __name__ == '__main__':
 
     model, callbacks = get_model()
 
-    hist = model.fit_generator(train_gen, 
-                               validation_data=valid_gen,
-                               samples_per_epoch=110 * BATCH_SIZE,
-                               nb_val_samples=1024,
-                               nb_epoch=EPOCHS,
-                               callbacks=callbacks)
+    from keras.utils.visualize_util import plot
+    plot(model, to_file='imgs/model.png', show_shapes=True)
 
-    model_json = model.to_json()
-    with open("model.json", "w") as json_file:
-        json_file.write(model_json)
 
-    model.save_weights('model.h5')
-       
+    if False:
+        hist = model.fit_generator(train_gen, 
+                                   validation_data=valid_gen,
+                                   samples_per_epoch=110 * BATCH_SIZE,
+                                   nb_val_samples=1024,
+                                   nb_epoch=EPOCHS,
+                                   callbacks=callbacks)
+
+        model_json = model.to_json()
+        with open("model.json", "w") as json_file:
+            json_file.write(model_json)
+
+        model.save_weights('model.h5')
+           
