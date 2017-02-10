@@ -1,22 +1,10 @@
-"""
-Stuff to figure out.
-
-1) Figure out how to build a simple model in Keras. 
-   Maybe start from one from comma.ai?
-2) Build a model that works on 9 images?
-3) Need a joystick to gather the data? Or maybe mouse is ok enough...
-3) What about logging keras to tensorboard?
-4) Probably we need to think about preloading the images.
-   
-Let's start real easy and make a starting model on only 10 images.
-
-"""
 import cv2
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
+import pickle
 import tqdm
 
 from keras.callbacks import ModelCheckpoint, TensorBoard
@@ -27,20 +15,22 @@ from keras.optimizers import Adam
 from keras.preprocessing.image import img_to_array
 
 from sklearn.model_selection import train_test_split
-from sklearn.utils import shuffle
+# from sklearn.utils import shuffle
 
 DATA_DIR = 'data'
 
 
 # We will data where speed is too low - they lead to non-smooth steering angles
-SPEED_CUTOFF = 20.0
+SPEED_CUTOFF = 15.0
+
+STEERING_SMOOTHING = False
+STEERING_SMOOTHING_COEFF = 20
 
 # Change angle by how much for left and right camera images
 DRIVING_ANGLE_CORR = 0.3
-TRANSLATION_CORRECTION = 0.09
+TRANSLATION_CORRECTION = 0.008
 
 VALID_SPLIT = 0.1
-# SEED = 42
 LEARNING_RATE = 1e-4
 
 INPUT_IMAGE_SIZE = (160, 320, 3)
@@ -49,17 +39,26 @@ IMG_CROP_PCT = (0.3125, 0.875)
 
 NET_IN_ROW, NET_IN_COL, NET_IN_CH = 64, 200, 3
 
-TRANSLATION_RANGE = 50
+TRANSLATION_RANGE = 50.
 
-# Placeholder for 
+# Placeholder for image preloading
 IMGS = None
 
-EPOCHS = 15
+EPOCHS = 10
 BATCH_SIZE = 256
 
+def shuffle(data):
+    return data.sample(frac=1).reset_index(drop=True)
 
 
 def preload_imgs():
+    """
+    Preloads the images into memory. 
+
+    If the dataset is small enough to fit into RAM, training can be made 
+    significantly faster by preloading all the images and keeping them
+    in memory instead of reloading each image again every time it is needed.
+    """
     print("Preloading images...")
     global IMGS
     resu = {}
@@ -74,7 +73,17 @@ def preload_imgs():
 
 
 def load_data():
+    """
+    Load the driving log and apply some basic processing:
+    * kick out data with speeed lower than SPEED_CUTOFF (they would have 
+      unsmooth steering angles)
+    * smooth the steering angle in general
+    * shuffle the data and split into training and validation set.
+    """
+
     dlog = pd.read_csv(os.path.join(DATA_DIR, 'driving_log.csv'))
+    if STEERING_SMOOTHING:
+        dlog['steering'] = dlog.steering.ewm(com=STEERING_SMOOTHING_COEFF).mean()
     dlog = shuffle(dlog[dlog.speed > SPEED_CUTOFF])
     train, valid = train_test_split(dlog, test_size=VALID_SPLIT)
     return train, valid
@@ -116,7 +125,7 @@ def resize(img, steering_angle):
 def random_translation(img, steering_angle):
     translation_size = np.random.uniform(-TRANSLATION_RANGE, TRANSLATION_RANGE)
     translation_matrix = np.array([[1.0, 0.0, translation_size], [0.0, 1.0, 0.0]])
-    translated_img = cv2.warpAffine(img, translation_matrix, (NET_IN_COL, NET_IN_ROW))
+    translated_img = cv2.warpAffine(img, translation_matrix, (img.shape[1], img.shape[0]))
     new_steering_angle = steering_angle + TRANSLATION_CORRECTION  * translation_size
     return translated_img, new_steering_angle
 
@@ -142,9 +151,10 @@ def batch_generator(data, batch_size, augs):
     batch_x = np.zeros((batch_size, NET_IN_ROW, NET_IN_COL, NET_IN_CH), dtype=np.float32)
     batch_y = np.zeros(batch_size, dtype=np.float32)
 
+    data = shuffle(data)
     idx_sample = 0
 
-    while 1:
+    while True:
         for idx_batch in range(batch_size):
 
             if idx_sample == len(data):
@@ -192,44 +202,42 @@ def get_model():
 
     model.add(Flatten())
 
-    # model.add(Dropout(0.5))
-
-    # model.add(Dense(1164))
-    # model.add(ELU())
-
-    model.add(Dense(100))
+    model.add(Dense(100, init='he_normal'))
     model.add(ELU())
 
-    model.add(Dense(50))
+    model.add(Dense(50, init='he_normal'))
     model.add(ELU())
 
-    model.add(Dense(10))
+    model.add(Dense(10, init='he_normal'))
     model.add(ELU())
 
-    model.add(Dense(1))
+    model.add(Dense(1, init='he_normal'))
 
     optimizer = Adam(lr=LEARNING_RATE)
-    model.compile(optimizer=optimizer, loss="mse", metrics=["mean_squared_error"])
+    model.compile(optimizer=optimizer, loss="mse", metrics=["mse"])
 
-    checkpoint = ModelCheckpoint("weights-{epoch:02d}.h5")
     tb = TensorBoard()
-    callbacks = [checkpoint, tb]
+    callbacks = [
+            tb
+    ]
 
     return model, callbacks
 
 
 
 if __name__ == '__main__':
-    preload_imgs()
+    # preload_imgs()
+
     train, valid = load_data()
 
     train_gen = batch_generator(train, BATCH_SIZE, [random_translation, flip, resize])
     valid_gen = batch_generator(valid, BATCH_SIZE, [resize])
+
     model, callbacks = get_model()
 
     hist = model.fit_generator(train_gen, 
                                validation_data=valid_gen,
-                               samples_per_epoch=100 * BATCH_SIZE,
+                               samples_per_epoch=110 * BATCH_SIZE,
                                nb_val_samples=1024,
                                nb_epoch=EPOCHS,
                                callbacks=callbacks)
@@ -239,4 +247,4 @@ if __name__ == '__main__':
         json_file.write(model_json)
 
     model.save_weights('model.h5')
-   
+       
