@@ -180,7 +180,7 @@ left and right images, data at 50 Hz, using analog gaming pad.
 Each time I was changing something, I tried to test several networks with 
 different random seeds in the simulator.
 
-####3. Acknowledgements, sources.
+####2. Acknowledgements, sources.
 
 The general idea of using ConvNets with pictures from 3 cameras (right, left
 center) is popular. While I was implementing this project, I came across
