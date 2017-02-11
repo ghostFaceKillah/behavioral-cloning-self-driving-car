@@ -233,21 +233,17 @@ if __name__ == '__main__':
 
     model, callbacks = get_model()
 
-    from keras.utils.visualize_util import plot
-    plot(model, to_file='imgs/model.png', show_shapes=True)
 
+    hist = model.fit_generator(train_gen, 
+                               validation_data=valid_gen,
+                               samples_per_epoch=110 * BATCH_SIZE,
+                               nb_val_samples=1024,
+                               nb_epoch=EPOCHS,
+                               callbacks=callbacks)
 
-    if False:
-        hist = model.fit_generator(train_gen, 
-                                   validation_data=valid_gen,
-                                   samples_per_epoch=110 * BATCH_SIZE,
-                                   nb_val_samples=1024,
-                                   nb_epoch=EPOCHS,
-                                   callbacks=callbacks)
+    model_json = model.to_json()
+    with open("model.json", "w") as json_file:
+        json_file.write(model_json)
 
-        model_json = model.to_json()
-        with open("model.json", "w") as json_file:
-            json_file.write(model_json)
-
-        model.save_weights('model.h5')
+    model.save_weights('model.h5')
            
