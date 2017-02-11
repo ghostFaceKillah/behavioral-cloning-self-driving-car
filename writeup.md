@@ -1,16 +1,18 @@
 #**Behavioral Cloning** 
 
-##Writeup Template
-
 ---
 
 **Behavrioal Cloning Project**
 
-The goals / steps of this project are the following:
-* Use the simulator to collect data of good driving behavior
-* Build, a convolution neural network in Keras that predicts steering angles from images
+The goal of this project is to implement a behavioral cloning agent
+that autonomously drives a car in driving simulator. It comprises of
+the following steps:
+* Use the simulator to collect samples of good driving behavior
+* Build, a convolution neural network in Keras that predicts steering
+   angles from images
 * Train and validate the model with a training and validation set
-* Test that the model successfully drives around track one without leaving the road
+* Test that the model successfully drives around track one
+  without leaving the road
 * Summarize the results with a written report
 
 
@@ -25,7 +27,8 @@ The goals / steps of this project are the following:
 [image7]: ./examples/placeholder_small.png "Flipped Image"
 
 ## Rubric Points
-Here I will consider the [rubric points](https://review.udacity.com/#!/rubrics/432/view)
+Here I will consider the
+[rubric points](https://review.udacity.com/#!/rubrics/432/view)
 individually and describe how I addressed each point in my implementation.  
 
 ---
@@ -49,24 +52,21 @@ python drive.py model.json
 
 ####3. Submssion code is usable and readable
 
-The model.py file contains the code for training and saving the convolution neural network.
- The file shows the pipeline I used for training and validating the model, and it contains comments to explain how the code works.
+The model.py file contains the code for training and saving the convolution
+neural network.  The file shows the pipeline I used for training and validating
+the model, and it contains comments to explain how the code works.
 
 ###Model Architecture and Training Strategy
 
 ####1. An appropriate model arcthiecture has been employed
 
-My model follows an architecture that is essentially a slightly simplified version of
-architecture presented in NVIDIA's
+My model follows an architecture that is essentially a slightly simplified
+version of architecture presented in NVIDIA's
 [End to End Learning for Self-Driving Cars](https://images.nvidia.com/content/tegra/automotive/images/2016/solutions/pdf/end-to-end-dl-using-px.pdf).
 
-It is a standard architecture, mimicked and modified in other papers concerning self-driving cars,
-such as Comma.ai [Learning a Driving Simulator](https://arxiv.org/abs/1608.01230), for which
-code can be seen on [company's GitHub account](https://github.com/commaai/research).
     
     
 The final used architecture can be seen on the below picture:
-
 ![architecture](imgs/model.png)
 
 
@@ -115,59 +115,87 @@ I have tried some additional data gathering tricks:
   
   
 I have observed the following:
-1) If I use all of above augmentation, the performance is more general (the car
-   is able to drive other way around the track and on the other, darker track),
-   however it is less stable with respect to unknown states on the easier, lighter 
-   track. It is a pretty surprising 'contradiction'.
+1) If I use all of the above augmentation, the performance is more general. The
+ car is able to drive other way around the track and on the other, darker
+track. However, it is less stable with respect to unknown states on the easier,
+lighter track. It is a pretty surprising 'contradiction'.
    
-2) If i leave only some of the above tricks on and gather significant amount
-   of data for the first track, I am able to fit (perhaps overfit in the light
-   of the above remark) and produce a pretty stable model.
+2) If i leave only some of the above tricks on and gather significant amount of
+   data for the first track, I am able to fit the first track (perhaps overfit in
+   the light of the above remark) and produce a pretty stable model.
    
-Therefore in the final submission I use 25 minutes of data gathered with the 
-random translations, smoothing the steering angle,
-random flips cropping, left and right images,
-data at 50 Hz, using analog gaming pad.
+Therefore in the final submission I have used 25 minutes of data gathered with
+the random translations, smoothing the steering angle, random flips cropping,
+left and right images, data at 50 Hz, using analog gaming pad.
 
-This enables me to produce a model about which I am sure on the first track, at
-a cost of poor performance on the second track.
+This has enabled me to produce a model about which I am sure on the first
+track, at a cost of poor performance on the second track.
 
 
 ###Model Architecture and Training Strategy
 
 ####1. Solution Design Approach
 
-The overall strategy for deriving a model architecture was to ...
+The overall strategy was to implement a variation of NVIDIA's paper
+* [End to End Learning for Self-Driving Cars](https://images.nvidia.com/content/tegra/automotive/images/2016/solutions/pdf/end-to-end-dl-using-px.pdf).
+I have decided to use this model because it works, as seen in the paper, and it
+is simple enough to enable a lot of quick experimentation.
 
-My first step was to use a convolution neural network model similar to the ... I thought this model might be appropriate because ...
+I started out by implementing the model and testing that it works on only 10
+`(image, steering)` pairs from the Udacity-supplied dataset. It is a nice
+sanity check that makes it easy to spot an early mistake in the model. I have
+gathered my own dataset, driving for 3 laps using keyboard and saving pictures
+at 10 Hz.
 
-In order to gauge how well the model was working, I split my image and steering angle data into a training and validation set. I found that my first model had a low mean squared error on the training set but a high mean squared error on the validation set. This implied that the model was overfitting. 
+I have then split the produced training dataset into 10% validation and 90%
+training set and started training. Model's performance on training set 
+has translated well in performance on the validation set. It was not
+surprising for me, as I knew the model was working well for the others,
+however it was still intersting to see that it does not overfit 
+even without using Dropout / Regularization and other similar methods.
 
-To combat the overfitting, I modified the model so that ...
+The neural network performed well, which does not mean that the driving agent
+was performing well. The car was driving in a wobbly way, leaning to easily
+from left to right. To combat this problem I have implemented several measures:
+* I have driven the car using analog stick of the Xbox gamepad 
+* I have gathered data at 50 hz
+* I have smoothed the driving angle as a function of time using EWMA
+* I have excluded data where the speed is lower than 15
+* I have gathered significantly longer driving history
 
-Then I ... 
+This made the drive a lot smoother.
 
-The final step was to run the simulator to see how well the car was driving around track one. There were a few spots where the vehicle fell off the track... to improve the driving behavior in these cases, I ....
+To combat overfitting to the first track, I have tried out a big variety of 
+augmentation and data gathering tricks, that I have described above.
 
-At the end of the process, the vehicle is able to drive autonomously around the track without leaving the road.
+They have increased the driving performance on the second track, but 
+decreased the performance on the first track. Perhaps some tuning of
+the learning hyperparams was needed to fully explore this.
+However in the end I have decided to skip most of the augmentation and
+gather bigger amounts of data on the first track.
+Therefore in the final submission I have used 25 minutes of data gathered with
+the random translations, smoothing the steering angle, random flips cropping,
+left and right images, data at 50 Hz, using analog gaming pad.
 
-####2. Final Model Architecture
+Each time I was changing something, I tried to test several networks with 
+different random seeds in the simulator.
 
-The final model architecture (model.py lines 18-24) consisted of a convolution neural network with the following layers and layer sizes ...
+####3. Acknowledgements, sources.
 
-Here is a visualization of the architecture (note: visualizing the architecture is optional according to the project rubric)
+The general idea of using ConvNets with pictures from 3 cameras (right, left
+center) is popular. While I was implementing this project, I came across
+this idea in three separate sources, most of which were cross-referencing
+each other.
 
-To capture good driving behavior, I first recorded two laps on track one using center lane driving. Here is an example image of center lane driving:
+These sources were:
 
-I then recorded the vehicle recovering from the left side and right sides of the road back to center so that the vehicle would learn to .... These images show what a recovery looks like starting from ... :
-
-Then I repeated this process on track two in order to get more data points.
-
-To augment the data sat, I also flipped images and angles thinking that this would ... For example, here is an image that has then been flipped:
-
-After the collection process, I had X number of data points. I then preprocessed this data by ...
+* [UC Berkeley Deep reinforcement learning course](http://rll.berkeley.edu/deeprlcourse/)
+* A paper by comma.ai: [Learning a Driving Simulator](https://arxiv.org/abs/1608.01230).
+  Code for this paper can be found on [company's GitHub account](https://github.com/commaai/research).
+* [End to End Learning for Self-Driving Cars](https://images.nvidia.com/content/tegra/automotive/images/2016/solutions/pdf/end-to-end-dl-using-px.pdf)
 
 
-I finally randomly shuffled the data set and put Y% of the data into a validation set. 
-
-I used this training data for training the model. The validation set helped determine if the model was over or under fitting. The ideal number of epochs was Z as evidenced by ... I used an adam optimizer so that manually training the learning rate wasn't necessary.
+Additionally, I have seen 
+* Udacity Atlassian forums
+* A post by Vivek Yadav, describing his experiences with this project
+[An augmentation based deep neural network approach to learn human driving behavior](https://chatbotslife.com/using-augmentation-to-mimic-human-driving-496b569760a9#.5zyhj4mam)
