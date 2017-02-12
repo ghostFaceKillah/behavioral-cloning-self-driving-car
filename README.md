@@ -131,6 +131,22 @@ left and right images, data at 50 Hz, using analog gaming pad.
 This has enabled me to produce a model about which I am sure on the first
 track, at a cost of poor performance on the second track.
 
+Let me visualize some of the data processing steps.
+
+The following graph shows four example images from the training dataset.  Each
+row shows images from left, center and right cameras.  We can see the the
+bonnet is in the picture. It does not ever change (maybe only it's lighting
+changes sometimes) and provides almost no additional information, so we can
+crop it out of the picture.
+
+![sample vanilla imgs](imgs/vanilla.png)
+
+A sample of different processed versions of one training image are shown on
+the below picture.
+
+![sample processed imgs](imgs/processed.png)
+
+
 
 ###Model Architecture and Training Strategy
 

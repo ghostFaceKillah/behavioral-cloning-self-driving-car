@@ -17,7 +17,7 @@ from model import (
 def show_vanilla_examples():
     train, _ = load_data()
 
-    plt.figure(figsize=(12,10))
+    plt.figure(figsize=(12, 10))
 
     plt_idx = 0
     for row_idx in range(4):
@@ -26,7 +26,7 @@ def show_vanilla_examples():
             plt_idx += 1
             plt.subplot(4, 3, plt_idx)
             plt.imshow(img.astype(np.uint8))
-            plt.title('str: {:.2f}'.format(st))
+            plt.title('steering angle: {:.2f}'.format(st))
             plt.axis('off')
 
     plt.savefig('imgs/vanilla.png')
@@ -38,10 +38,10 @@ def show_processed_examples():
     train = train.iloc[0:1]
     img, st = load_data_point(train.iloc[0], 'center')
 
-    plt.figure(figsize=(12,10))
-    plt.subplot(4,3,1)
+    plt.figure(figsize=(12, 10))
+    plt.subplot(4, 3, 1)
     plt.imshow(img.astype(np.uint8))
-    plt.title('str: {:.2f}'.format(st))
+    plt.title('steering angle: {:.2f}'.format(st))
     plt.axis('off')
 
     train_gen = batch_generator(train, 11, [random_translation, flip, resize])
@@ -59,5 +59,5 @@ def show_processed_examples():
 
 
 if __name__ == '__main__':
-    # show_vanilla_examples()
+    show_vanilla_examples()
     show_processed_examples()
