@@ -52,7 +52,7 @@ def show_processed_examples():
         st = ys[i]
         plt.subplot(4, 3, i + 2)
         plt.imshow(img.astype(np.uint8))
-        plt.title('str: {:.2f}'.format(st))
+        plt.title('steering angle: {:.2f}'.format(st))
         plt.axis('off');
 
     plt.savefig('imgs/processed.png')
